@@ -6,6 +6,31 @@ from workflow.background import run_in_background, is_running
 
 log = None
 
+
+def get_jobs_for_project(api_key, url, project_id):
+    params = dict(private_token=api_key)
+    params['scope[]'] = ['running', 'success']
+    r = web.get(url+'projects/'+str(project_id)+'/jobs', params)
+
+    print r.url
+    print r
+    # throw an error if request failed
+    # Workflow will catch this and show it to the user
+    r.raise_for_status()
+
+    # Parse the JSON returned by GitLab and extract the projects
+    result = r.json()
+    
+
+    for element in result:
+        wf.add_item(title=element[u'commit'][u'title'],
+                    subtitle=element[u'commit'][u'committer_name'],
+                    arg=element[u'commit'][u'short_id'],
+                    valid=True,
+                    icon=None,
+                    uid=element[u'pipeline'][u'id'])
+    return
+
 def search_for_project(project):
     """Generate a string search key for a project"""
     elements = []
@@ -22,7 +47,9 @@ def main(wf):
     # action with the API key
     parser.add_argument('--setkey', dest='apikey', nargs='?', default=None)
     parser.add_argument('--seturl', dest='apiurl', nargs='?', default=None)
+    parser.add_argument('set_project_id', dest='set_project_id', nargs='?', default=None)
     parser.add_argument('query', nargs='?', default=None)
+    parser.add_argument('project_id', nargs='?', default=None)
     # parse the script's arguments
     args = parser.parse_args(wf.args)
 
@@ -40,6 +67,8 @@ def main(wf):
         log.info("Setting API URL to {url}".format(url=args.apiurl))
         wf.settings['api_url'] = args.apiurl
         return 0
+    if args.set_project_id:
+        wf.SetVar('project_id',)
 
     ####################################################################
     # Check that we have an API key saved
@@ -84,6 +113,9 @@ def main(wf):
         run_in_background('update', cmd)
         wf.rerun = 0.5
 
+    if wf.getvar('project_id'):
+        get_jobs_for_project(wf.get_password('gitlab_api_key'),wf.settings.get('api_url', 'https://gitlab.com/api/v4/projects'),wf.getvar('project_id'))
+
     # If script was passed a query, use it to filter projects
     if query and projects:
         projects = wf.filter(query, projects, key=search_for_project, min_score=20)
@@ -101,8 +133,7 @@ def main(wf):
                     arg=project['web_url'],
                     valid=True,
                     icon=None,
-                    uid=project['id'])
-
+                    uid=project['id'])                    
     # Send the results to Alfred as XML
     wf.send_feedback()
 
